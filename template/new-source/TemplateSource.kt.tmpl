@@ -1,0 +1,326 @@
+package eu.kanade.tachiyomi.animeextension.__LANG__.__PKG_NAME__
+
+import android.content.SharedPreferences
+import androidx.preference.PreferenceScreen
+import aniyomi.lib.playlistutils.PlaylistUtils
+import eu.kanade.tachiyomi.animesource.ConfigurableAnimeSource
+import eu.kanade.tachiyomi.animesource.model.AnimeFilterList
+import eu.kanade.tachiyomi.animesource.model.AnimesPage
+import eu.kanade.tachiyomi.animesource.model.Hoster
+import eu.kanade.tachiyomi.animesource.model.SAnime
+import eu.kanade.tachiyomi.animesource.model.SEpisode
+import eu.kanade.tachiyomi.animesource.model.Video
+import eu.kanade.tachiyomi.animesource.online.AnimeHttpSource
+import eu.kanade.tachiyomi.network.GET
+import eu.kanade.tachiyomi.util.asJsoup
+import keiyoushi.network.get
+import keiyoushi.network.rateLimit
+import keiyoushi.utils.addListPreference
+import keiyoushi.utils.getPreferencesLazy
+import keiyoushi.utils.tryParse
+import okhttp3.Headers
+import okhttp3.HttpUrl.Companion.toHttpUrl
+import okhttp3.Request
+import okhttp3.Response
+import org.jsoup.nodes.Document
+import org.jsoup.nodes.Element
+import java.text.SimpleDateFormat
+import java.util.Locale
+
+/**
+ * ============================================================================
+ *  PLANTILLA PARA AGREGAR UNA NUEVA PÁGINA DE ANIME  (extensions-lib 16)
+ * ============================================================================
+ *
+ * Esta clase es un modelo completo y funcional para un sitio "clásico" renderizado
+ * en HTML (scraping con Jsoup). Se generó con `scripts/new-source.py`; busca los
+ * comentarios `TODO(fuente)` y ajústalos al sitio real:
+ *
+ *  1. Selectores CSS de cada listado / detalle / episodios / servidores.
+ *  2. Formato de URL de búsqueda y paginación.
+ *  3. Cómo se extraen los videos de cada servidor (`getVideoList`).
+ *  4. Cómo se obtienen los enlaces de descarga (`downloadHosters`).
+ *
+ * Flujo de la app (ver CONTRIBUTING.md#extension-call-flow):
+ *
+ *   Popular / Latest / Search ──> lista de SAnime (title + url + thumbnail_url)
+ *   Detalles                  ──> animeDetailsParse
+ *   Episodios                 ──> episodeListParse (orden DESCENDENTE)
+ *   Servidores del episodio   ──> hosterListRequest / hosterListParse
+ *   Videos de un servidor     ──> getVideoList(hoster)
+ *   Descarga                  ──> la app descarga los `Video` devueltos por
+ *                                 getVideoList (mp4 directo o HLS .m3u8). Los
+ *                                 servidores "Descarga" se exponen como Hoster
+ *                                 extra con enlaces directos.
+ *
+ * Reglas importantes (resumen de CONTRIBUTING.md):
+ *  - `SAnime.url` / `SEpisode.url` guardan una ruta relativa o un slug, nunca una URL absoluta.
+ *  - No fijes User-Agent, no uses Thread.sleep, no detectes Cloudflare a mano.
+ *  - Pasa siempre `headers` en cada GET/POST.
+ *  - Si cambias `name` o `lang` después de publicar, conserva el `id` anterior.
+ *  - Sube `extVersionCode` en build.gradle con cada cambio.
+ */
+class __CLASS_NAME__ :
+    AnimeHttpSource(),
+    ConfigurableAnimeSource {
+
+    // ========================== Metadatos de la fuente ====================
+
+    override val name = "__EXT_NAME__"
+
+    // TODO(fuente): URL base del sitio, sin barra final.
+    override val baseUrl = "__BASE_URL__"
+
+    override val lang = "__LANG__"
+
+    // false si el sitio no tiene listado de "últimos". Entonces popular = latest (ver CONTRIBUTING.md).
+    override val supportsLatest = true
+
+    private val preferences: SharedPreferences by getPreferencesLazy()
+
+    override val client = network.client.newBuilder()
+        .rateLimit(3)
+        .build()
+
+    override fun headersBuilder(): Headers.Builder = super.headersBuilder()
+        .add("Referer", "$baseUrl/")
+
+    private val playlistUtils by lazy { PlaylistUtils(client, headers) }
+
+    // TODO(fuente): formato de fecha del sitio (si lo muestra).
+    private val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.ROOT)
+
+    // ============================== Popular ===============================
+
+    // TODO(fuente): URL del listado de populares y su paginación.
+    override fun popularAnimeRequest(page: Int): Request = GET("$baseUrl/anime?order=popular&page=$page", headers)
+
+    // TODO(fuente): selector de cada tarjeta de anime en un listado.
+    private val listItemSelector = "div.anime-card"
+
+    // TODO(fuente): selector del botón "siguiente página".
+    private val nextPageSelector = "a.next, li.next > a"
+
+    override fun popularAnimeParse(response: Response): AnimesPage = parseAnimeListing(response.asJsoup())
+
+    private fun parseAnimeListing(document: Document): AnimesPage {
+        val animes = document.select(listItemSelector).map(::animeFromElement)
+        val hasNextPage = document.selectFirst(nextPageSelector) != null
+        return AnimesPage(animes, hasNextPage)
+    }
+
+    private fun animeFromElement(element: Element): SAnime = SAnime.create().apply {
+        // TODO(fuente): ajusta los selectores. `title` y `url` son obligatorios.
+        val link = element.selectFirst("a")!!
+        setUrlWithoutDomain(link.absUrl("href"))
+        title = element.selectFirst(".title")?.text() ?: link.attr("title")
+        thumbnail_url = element.selectFirst("img")?.let { img ->
+            img.absUrl("data-src").ifEmpty { img.absUrl("src") }
+        }
+    }
+
+    // =============================== Latest ===============================
+
+    // TODO(fuente): URL de los últimos episodios/animes agregados.
+    override fun latestUpdatesRequest(page: Int): Request = GET("$baseUrl/anime?order=latest&page=$page", headers)
+
+    override fun latestUpdatesParse(response: Response): AnimesPage = parseAnimeListing(response.asJsoup())
+
+    // =============================== Search ===============================
+
+    // TODO(fuente): agrega filtros (género, año, estado...) devolviendo un AnimeFilterList con
+    // AnimeFilter.Select / TriState / Group (ver CONTRIBUTING.md#filters) y léelos en searchAnimeRequest.
+    override fun getFilterList(): AnimeFilterList = AnimeFilterList()
+
+    // TODO(fuente): endpoint y parámetros de búsqueda.
+    override fun searchAnimeRequest(page: Int, query: String, filters: AnimeFilterList): Request {
+        val url = "$baseUrl/search".toHttpUrl().newBuilder()
+            .addQueryParameter("q", query)
+            .addQueryParameter("page", page.toString())
+            .build()
+        return GET(url, headers)
+    }
+
+    override fun searchAnimeParse(response: Response): AnimesPage = parseAnimeListing(response.asJsoup())
+
+    // =========================== Anime Details ============================
+
+    // Se usa al pulsar "Abrir en WebView". Sobrescríbelo solo si `anime.url` no es la página web.
+    override fun getAnimeUrl(anime: SAnime): String = baseUrl + anime.url
+
+    override fun animeDetailsParse(response: Response): SAnime {
+        val document = response.asJsoup()
+        return SAnime.create().apply {
+            // TODO(fuente): ajusta los selectores de la ficha del anime.
+            title = document.selectFirst("h1")!!.text()
+            thumbnail_url = document.selectFirst("div.poster img")?.absUrl("src")
+            description = document.selectFirst("div.synopsis")?.text()
+            genre = document.select("div.genres a").joinToString { it.text() }
+            author = document.selectFirst("div.studio")?.text()
+            status = parseStatus(document.selectFirst("span.status")?.text())
+        }
+    }
+
+    private fun parseStatus(status: String?): Int {
+        val value = status?.lowercase().orEmpty()
+        return when {
+            "emisi" in value || "ongoing" in value || "airing" in value -> SAnime.ONGOING
+            "finaliz" in value || "complet" in value || "finished" in value -> SAnime.COMPLETED
+            else -> SAnime.UNKNOWN
+        }
+    }
+
+    // ============================== Episodes ==============================
+
+    // Sitios sin temporadas separadas: no se usa.
+    override fun seasonListParse(response: Response): List<SAnime> = throw UnsupportedOperationException()
+
+    // TODO(fuente): selector de cada episodio en la ficha del anime.
+    private val episodeSelector = "ul.episodes > li"
+
+    override fun episodeListParse(response: Response): List<SEpisode> {
+        val document = response.asJsoup()
+        return document.select(episodeSelector).map(::episodeFromElement)
+            // La app espera la lista ordenada de MÁS NUEVO a MÁS ANTIGUO.
+            .sortedByDescending { it.episode_number }
+    }
+
+    private fun episodeFromElement(element: Element): SEpisode = SEpisode.create().apply {
+        // TODO(fuente): ajusta los selectores.
+        val link = element.selectFirst("a")!!
+        setUrlWithoutDomain(link.absUrl("href"))
+        val number = element.selectFirst(".num")?.text()?.toFloatOrNull()
+            ?: EPISODE_NUMBER_REGEX.find(link.text())?.value?.toFloatOrNull()
+            ?: 0F
+        episode_number = number
+        name = element.selectFirst(".ep-title")?.text()
+            ?: "Episodio ${number.toString().removeSuffix(".0")}"
+        date_upload = dateFormat.tryParse(element.selectFirst(".date")?.text())
+    }
+
+    // Se usa al pulsar "Abrir en WebView" desde el reproductor.
+    override fun getEpisodeUrl(episode: SEpisode): String = baseUrl + episode.url
+
+    // ============================ Video Links =============================
+
+    // 1) Página del episodio -> lista de servidores (hosters).
+    override fun hosterListRequest(episode: SEpisode): Request = GET(baseUrl + episode.url, headers)
+
+    override fun hosterListParse(response: Response): List<Hoster> {
+        val document = response.asJsoup()
+
+        // TODO(fuente): servidores de streaming (iframes / botones con data-embed).
+        val streamHosters = document.select("ul.servers li[data-embed], div.player iframe").mapNotNull { server ->
+            val embedUrl = server.attr("data-embed").ifEmpty { server.absUrl("src") }
+            if (embedUrl.isEmpty()) return@mapNotNull null
+            Hoster(
+                hosterUrl = embedUrl,
+                hosterName = server.attr("data-name").ifEmpty { embedUrl.toHttpUrl().host },
+                internalData = TYPE_STREAM,
+            )
+        }
+
+        return streamHosters + downloadHosters(document)
+    }
+
+    /**
+     * Servidores de DESCARGA: enlaces directos (mp4/mkv) que la app puede reproducir y descargar.
+     *
+     * TODO(fuente): ajusta el selector. Si el sitio no ofrece descargas directas, devuelve emptyList().
+     * Si el enlace caduca rápido, devuelve el Video con `initialized = false` en getVideoList y
+     * resuélvelo en `resolveVideo`.
+     */
+    private fun downloadHosters(document: Document): List<Hoster> = document.select("div.downloads a[href]").map { link ->
+        Hoster(
+            hosterUrl = link.absUrl("href"),
+            hosterName = "Descarga ${link.text()}".trim(),
+            internalData = TYPE_DOWNLOAD,
+        )
+    }
+
+    // 2) Servidor -> lista de videos reproducibles.
+    override suspend fun getVideoList(hoster: Hoster): List<Video> {
+        val url = hoster.hosterUrl
+        return when (hoster.internalData) {
+            TYPE_DOWNLOAD -> listOf(
+                Video(
+                    videoUrl = url,
+                    videoTitle = hoster.hosterName,
+                    headers = headers,
+                ),
+            )
+
+            else -> when {
+                // TODO(fuente): conecta aquí los extractores de /lib según el dominio del embed.
+                // Declara la dependencia en build.gradle y crea el extractor con `by lazy`, por ejemplo:
+                //   private val streamWishExtractor by lazy { StreamWishExtractor(client, headers) }
+                //   "streamwish" in url || "awish" in url -> streamWishExtractor.videosFromUrl(url, hoster.hosterName)
+                url.contains(".m3u8") -> playlistUtils.extractFromHls(
+                    playlistUrl = url,
+                    referer = "$baseUrl/",
+                    videoNameGen = { quality -> "${hoster.hosterName} - $quality" },
+                )
+
+                url.contains(".mp4") -> listOf(
+                    Video(
+                        videoUrl = url,
+                        videoTitle = "${hoster.hosterName} - mp4",
+                        headers = headers,
+                    ),
+                )
+
+                // Embed genérico: busca <source>/<video> en la página del reproductor.
+                else -> videosFromEmbed(url, hoster.hosterName)
+            }
+        }
+    }
+
+    private suspend fun videosFromEmbed(embedUrl: String, label: String): List<Video> {
+        val document = client.get(embedUrl, headers).asJsoup()
+        return document.select("video source[src], source[src]").map { source ->
+            Video(
+                videoUrl = source.absUrl("src"),
+                videoTitle = "$label - ${source.attr("label").ifEmpty { source.attr("res").ifEmpty { "Video" } }}",
+                headers = headers,
+            )
+        }
+    }
+
+    // Solo para videos con `initialized = false` (enlaces que caducan). Si no los usas, no hace falta tocarlo.
+    // override suspend fun resolveVideo(video: Video): Video? { ... }
+
+    // ======================== Ordenado y preferencias =====================
+
+    private val preferredQuality: String
+        get() = preferences.getString(PREF_QUALITY_KEY, PREF_QUALITY_DEFAULT) ?: PREF_QUALITY_DEFAULT
+
+    override fun List<Video>.sortVideos(): List<Video> = sortedWith(
+        compareByDescending<Video> { it.videoTitle.contains(preferredQuality) }
+            .thenByDescending { video ->
+                QUALITY_REGEX.find(video.videoTitle)?.groupValues?.get(1)?.toIntOrNull() ?: 0
+            },
+    )
+
+    override fun setupPreferenceScreen(screen: PreferenceScreen) {
+        screen.addListPreference(
+            key = PREF_QUALITY_KEY,
+            default = PREF_QUALITY_DEFAULT,
+            title = "Calidad preferida",
+            summary = "%s",
+            entries = PREF_QUALITY_ENTRIES.map { "${it}p" },
+            entryValues = PREF_QUALITY_ENTRIES,
+        )
+    }
+
+    companion object {
+        private const val TYPE_STREAM = "stream"
+        private const val TYPE_DOWNLOAD = "download"
+
+        private const val PREF_QUALITY_KEY = "preferred_quality"
+        private val PREF_QUALITY_ENTRIES = listOf("1080", "720", "480", "360")
+        private val PREF_QUALITY_DEFAULT = PREF_QUALITY_ENTRIES.first()
+
+        private val QUALITY_REGEX = Regex("""(\d{3,4})p""")
+        private val EPISODE_NUMBER_REGEX = Regex("""\d+(\.\d+)?""")
+    }
+}

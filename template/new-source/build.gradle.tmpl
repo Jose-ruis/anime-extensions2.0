@@ -1,0 +1,16 @@
+ext {
+    extName = '__EXT_NAME__'
+    extClass = '.__CLASS_NAME__'
+    extVersionCode = 1
+    libVersion = 16
+    // isNsfw = true
+}
+
+apply plugin: "kei.plugins.extension.legacy"
+
+dependencies {
+    // Extractores / librerías compartidas que necesite tu fuente (carpeta /lib). Ejemplos:
+    // implementation(project(':lib:streamwishextractor'))
+    // implementation(project(':lib:streamtapeextractor'))
+    implementation(project(':lib:playlistutils'))
+}
