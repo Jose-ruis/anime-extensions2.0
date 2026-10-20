@@ -6,7 +6,7 @@ I acknowledge that:
 - I have updated all extensions
 - If this is an issue with the app itself, that I should be opening an issue in App's support site.
 - I have searched the existing issues for duplicates
-- For source requests, I have checked the list of existing extensions including the multi-source spreadsheet: https://TU_USUARIO.github.io/TU_REPOSITORIO/
+- For source requests, I have checked the list of existing extensions including the multi-source spreadsheet: https://Jose-ruis.github.io/anime-extensions2.0/
 
 **DELETE THIS SECTION IF YOU HAVE READ AND ACKNOWLEDGED IT**
 

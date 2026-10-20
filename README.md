@@ -2,7 +2,7 @@
 
 | Instalar en Aniyomi | Instalar en Anikku | Build |
 |:-------------------:|:------------------:|:-----:|
-| [![Instalar](https://img.shields.io/badge/Instalar%20repo-gray?style=flat&labelColor=red)](https://intradeus.github.io/http-protocol-redirector/?r=aniyomi://add-repo?url=https://raw.githubusercontent.com/TU_USUARIO/TU_REPOSITORIO/repo/index.min.json) | [![Instalar](https://img.shields.io/badge/Instalar%20repo-gray?style=flat&labelColor=red)](https://intradeus.github.io/http-protocol-redirector/?r=anikku://add-repo?url=https://raw.githubusercontent.com/TU_USUARIO/TU_REPOSITORIO/repo/index.min.json) | ![CI](https://github.com/TU_USUARIO/TU_REPOSITORIO/actions/workflows/build_push.yml/badge.svg) |
+| [![Instalar](https://img.shields.io/badge/Instalar%20repo-gray?style=flat&labelColor=red)](https://intradeus.github.io/http-protocol-redirector/?r=aniyomi://add-repo?url=https://raw.githubusercontent.com/Jose-ruis/anime-extensions2.0/repo/index.min.json) | [![Instalar](https://img.shields.io/badge/Instalar%20repo-gray?style=flat&labelColor=red)](https://intradeus.github.io/http-protocol-redirector/?r=anikku://add-repo?url=https://raw.githubusercontent.com/Jose-ruis/anime-extensions2.0/repo/index.min.json) | ![CI](https://github.com/Jose-ruis/anime-extensions2.0/actions/workflows/build_push.yml/badge.svg) |
 
 </div>
 
@@ -10,7 +10,7 @@
 
 Repositorio de extensiones (Kotlin + Jsoup/OkHttp) para [Anikku](https://github.com/komikku-app/anikku) y [Aniyomi](https://github.com/aniyomiorg/aniyomi).
 
-> **Primer paso:** busca `TU_USUARIO` y `TU_REPOSITORIO` en el proyecto y cámbialos por tus datos con
+> **Primer paso:** busca `Jose-ruis` y `anime-extensions2.0` en el proyecto y cámbialos por tus datos con
 > `python scripts/configure-repo.py` (autodetecta el remoto `origin`, o usa `--owner` y `--repo`).
 
 ## Puesta en marcha en tu GitHub
@@ -28,7 +28,7 @@ Repositorio de extensiones (Kotlin + Jsoup/OkHttp) para [Anikku](https://github.
 URL del repositorio de extensiones para añadir en la app:
 
 ```
-https://raw.githubusercontent.com/TU_USUARIO/TU_REPOSITORIO/repo/index.min.json
+https://raw.githubusercontent.com/Jose-ruis/anime-extensions2.0/repo/index.min.json
 ```
 
 ## Agregar una nueva página de anime

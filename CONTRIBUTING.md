@@ -5,7 +5,7 @@ it carefully** if you're a new contributor or don't have any experience on the r
 and knowledges.
 
 This guide is not definitive and it's being updated over time. If you find any issues in it, feel
-free to report it through a [Meta Issue](https://github.com/TU_USUARIO/TU_REPOSITORIO/issues/new?assignees=&labels=Meta+request&template=06_request_meta.yml)
+free to report it through a [Meta Issue](https://github.com/Jose-ruis/anime-extensions2.0/issues/new?assignees=&labels=Meta+request&template=06_request_meta.yml)
 or fixing it directly by submitting a Pull Request.
 
 ## Table of Contents
@@ -330,16 +330,16 @@ use case. Each lib is self-documented via KDoc comments and/or a README in its o
 
 | Module                                                                                                    | Description                                                                             |
 |-----------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------|
-| [`lib-cryptoaes`](https://github.com/TU_USUARIO/TU_REPOSITORIO/tree/master/lib/cryptoaes)                 | AES-CBC decryption compatible with CryptoJS; JSFuck deobfuscation                       |
-| [`lib-dataimage`](https://github.com/TU_USUARIO/TU_REPOSITORIO/tree/master/lib/dataimage)                 | Decodes base64 `data:image` strings into mock URLs that OkHttp can handle               |
-| [`lib-i18n`](https://github.com/TU_USUARIO/TU_REPOSITORIO/tree/master/lib/i18n)                           | Internationalization helper (`Intl`) for multi-language UI strings in extensions        |
-| [`lib-lzstring`](https://github.com/TU_USUARIO/TU_REPOSITORIO/tree/master/lib/lzstring)                   | LZ-String decompression and compression                                                 |
-| [`lib-randomua`](https://github.com/TU_USUARIO/TU_REPOSITORIO/tree/master/lib/randomua)                   | Fetches and rotates real-world User-Agent strings (requires overriding `getAnimeUrl()`) |
-| [`lib-seedrandom`](https://github.com/TU_USUARIO/TU_REPOSITORIO/tree/master/lib/seedrandom)               | Seeded deterministic pseudo-random number generation (ARC4-based)                       |
-| [`lib-synchrony`](https://github.com/TU_USUARIO/TU_REPOSITORIO/tree/master/lib/synchrony)                 | JavaScript deobfuscation via the Synchrony engine (QuickJS sandbox)                     |
-| [`lib-textinterceptor`](https://github.com/TU_USUARIO/TU_REPOSITORIO/tree/master/lib/textinterceptor)     | Renders plain text or HTML as a PNG image page                                          |
-| [`lib-unpacker`](https://github.com/TU_USUARIO/TU_REPOSITORIO/tree/master/lib/unpacker)                   | Unpacks Dean Edwards-packed JavaScript; substring extraction helpers                    |
-| [`lib-zipinterceptor`](https://github.com/TU_USUARIO/TU_REPOSITORIO/tree/master/lib/zipinterceptor)       | Decodes, stitches, and processes multi-page ZIP/AVIF/SVG image archives                 |
+| [`lib-cryptoaes`](https://github.com/Jose-ruis/anime-extensions2.0/tree/master/lib/cryptoaes)                 | AES-CBC decryption compatible with CryptoJS; JSFuck deobfuscation                       |
+| [`lib-dataimage`](https://github.com/Jose-ruis/anime-extensions2.0/tree/master/lib/dataimage)                 | Decodes base64 `data:image` strings into mock URLs that OkHttp can handle               |
+| [`lib-i18n`](https://github.com/Jose-ruis/anime-extensions2.0/tree/master/lib/i18n)                           | Internationalization helper (`Intl`) for multi-language UI strings in extensions        |
+| [`lib-lzstring`](https://github.com/Jose-ruis/anime-extensions2.0/tree/master/lib/lzstring)                   | LZ-String decompression and compression                                                 |
+| [`lib-randomua`](https://github.com/Jose-ruis/anime-extensions2.0/tree/master/lib/randomua)                   | Fetches and rotates real-world User-Agent strings (requires overriding `getAnimeUrl()`) |
+| [`lib-seedrandom`](https://github.com/Jose-ruis/anime-extensions2.0/tree/master/lib/seedrandom)               | Seeded deterministic pseudo-random number generation (ARC4-based)                       |
+| [`lib-synchrony`](https://github.com/Jose-ruis/anime-extensions2.0/tree/master/lib/synchrony)                 | JavaScript deobfuscation via the Synchrony engine (QuickJS sandbox)                     |
+| [`lib-textinterceptor`](https://github.com/Jose-ruis/anime-extensions2.0/tree/master/lib/textinterceptor)     | Renders plain text or HTML as a PNG image page                                          |
+| [`lib-unpacker`](https://github.com/Jose-ruis/anime-extensions2.0/tree/master/lib/unpacker)                   | Unpacks Dean Edwards-packed JavaScript; substring extraction helpers                    |
+| [`lib-zipinterceptor`](https://github.com/Jose-ruis/anime-extensions2.0/tree/master/lib/zipinterceptor)       | Decodes, stitches, and processes multi-page ZIP/AVIF/SVG image archives                 |
 
 > [!IMPORTANT]
 > If your module uses `:lib:randomua`, the Spotless check requires your extension to override the `getAnimeUrl()` method in your main class, or the build will fail.
@@ -370,7 +370,7 @@ directly using.
 
 #### i18n library
 
-[`lib-i18n`](https://github.com/TU_USUARIO/TU_REPOSITORIO/tree/master/lib/i18n) is a library for handling
+[`lib-i18n`](https://github.com/Jose-ruis/anime-extensions2.0/tree/master/lib/i18n) is a library for handling
 internationalization in the sources. It allows loading `.properties` files with messages located under
 the `assets/i18n` folder of each extension, that can be used to translate strings under the source.
 
@@ -1105,7 +1105,7 @@ you can use the `adb` command below.
 adb shell am start -d "<your-link>" -a android.intent.action.VIEW
 ```
 
-You can find a complete example of how URLs work in the [NyaaTorrent extension](https://github.com/TU_USUARIO/TU_REPOSITORIO/tree/master/src/all/nyaatorrent).
+You can find a complete example of how URLs work in the [NyaaTorrent extension](https://github.com/Jose-ruis/anime-extensions2.0/tree/master/src/all/nyaatorrent).
 
 #### Update strategy
 
@@ -1128,7 +1128,7 @@ There are some cases where existing sources change their names on the website. T
 these changes in the extension, you need to explicitly set the `id` to the same old value, otherwise
 it will get changed by the new `name` value and users will be forced to migrate back to the source.
 
-To get the current `id` value before the name change, you can search the source name in the [repository JSON file](https://github.com/TU_USUARIO/TU_REPOSITORIO/blob/repo/index.json)
+To get the current `id` value before the name change, you can search the source name in the [repository JSON file](https://github.com/Jose-ruis/anime-extensions2.0/blob/repo/index.json)
 by looking at the `sources` attribute of the extension. When you have the `id` copied, you can
 override it in the source:
 

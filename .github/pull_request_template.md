@@ -16,4 +16,4 @@ Checklist:
 Add a :+1: [reaction] to [pull requests you find important].
 
 [reaction]: https://github.blog/2016-03-10-add-reactions-to-pull-requests-issues-and-comments/
-[pull requests you find important]: https://github.com/TU_USUARIO/TU_REPOSITORIO/pulls?q=is%3Aopen+sort%3Areactions-%2B1-desc
+[pull requests you find important]: https://github.com/Jose-ruis/anime-extensions2.0/pulls?q=is%3Aopen+sort%3Areactions-%2B1-desc

@@ -47,7 +47,7 @@ loadIndividualExtension("en", "miruro")
 
 ## New sources
 
-Generate a new extension from the documented template with `python scripts/new-source.py --lang <lang> --name "<Name>" --base-url <url>` (see `template/new-source/README.md`). Replace `TU_USUARIO`/`TU_REPOSITORIO` placeholders with `python scripts/configure-repo.py`.
+Generate a new extension from the documented template with `python scripts/new-source.py --lang <lang> --name "<Name>" --base-url <url>` (see `template/new-source/README.md`). Replace `Jose-ruis`/`anime-extensions2.0` placeholders with `python scripts/configure-repo.py`.
 
 ## Structure
 
