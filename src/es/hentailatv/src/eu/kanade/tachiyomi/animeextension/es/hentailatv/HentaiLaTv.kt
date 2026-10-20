@@ -17,13 +17,11 @@ import keiyoushi.network.get
 import keiyoushi.network.rateLimit
 import keiyoushi.utils.addListPreference
 import keiyoushi.utils.getPreferencesLazy
-import keiyoushi.utils.tryParse
 import okhttp3.Headers
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.Request
 import okhttp3.Response
 import org.jsoup.nodes.Document
-import org.jsoup.nodes.Element
 import java.text.SimpleDateFormat
 import java.util.Locale
 
@@ -50,8 +48,7 @@ class HentaiLaTv :
 
     // ============================== Popular ===============================
 
-    override fun popularAnimeRequest(page: Int): Request =
-        GET("$baseUrl/directorio?page=$page", headers)
+    override fun popularAnimeRequest(page: Int): Request = GET("$baseUrl/directorio?page=$page", headers)
 
     private val listItemSelector = "div.elemento, article.anime-card, div.col-6 div.item"
 
@@ -75,8 +72,7 @@ class HentaiLaTv :
 
     // =============================== Latest ===============================
 
-    override fun latestUpdatesRequest(page: Int): Request =
-        GET("$baseUrl/animes?page=$page", headers)
+    override fun latestUpdatesRequest(page: Int): Request = GET("$baseUrl/animes?page=$page", headers)
 
     override fun latestUpdatesParse(response: Response): AnimesPage = parseAnimeListing(response.asJsoup())
 
@@ -127,7 +123,7 @@ class HentaiLaTv :
         val document = response.asJsoup()
         // HentaiLa suele listar los episodios en bloques o listados numerados
         val episodeElements = document.select("ul.episodes-list li, div.episios a, .list-eps li a, ul#chapters li a")
-        
+
         if (episodeElements.isEmpty()) {
             // Si la página del anime es directamente el episodio o usa otro selector
             val currentEp = SEpisode.create().apply {
@@ -220,19 +216,17 @@ class HentaiLaTv :
         }
     }
 
-    private suspend fun videosFromEmbed(embedUrl: String, label: String): List<Video> {
-        return try {
-            val document = client.get(embedUrl, headers).asJsoup()
-            document.select("video source[src], source[src]").map { source ->
-                Video(
-                    videoUrl = source.absUrl("src"),
-                    videoTitle = "$label - ${source.attr("label").ifEmpty { source.attr("res").ifEmpty { "Video" } }}",
-                    headers = headers,
-                )
-            }
-        } catch (_: Exception) {
-            emptyList()
+    private suspend fun videosFromEmbed(embedUrl: String, label: String): List<Video> = try {
+        val document = client.get(embedUrl, headers).asJsoup()
+        document.select("video source[src], source[src]").map { source ->
+            Video(
+                videoUrl = source.absUrl("src"),
+                videoTitle = "$label - ${source.attr("label").ifEmpty { source.attr("res").ifEmpty { "Video" } }}",
+                headers = headers,
+            )
         }
+    } catch (_: Exception) {
+        emptyList()
     }
 
     private val preferredQuality: String
