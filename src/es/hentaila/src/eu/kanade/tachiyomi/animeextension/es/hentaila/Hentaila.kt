@@ -4,6 +4,7 @@ import androidx.preference.ListPreference
 import androidx.preference.PreferenceScreen
 import aniyomi.lib.burstcloudextractor.BurstCloudExtractor
 import aniyomi.lib.mp4uploadextractor.Mp4uploadExtractor
+import aniyomi.lib.playlistutils.PlaylistUtils
 import aniyomi.lib.sendvidextractor.SendvidExtractor
 import aniyomi.lib.streamwishextractor.StreamWishExtractor
 import aniyomi.lib.universalextractor.UniversalExtractor
@@ -17,15 +18,14 @@ import eu.kanade.tachiyomi.animesource.model.AnimeFilter
 import eu.kanade.tachiyomi.animesource.model.AnimeFilterList
 import eu.kanade.tachiyomi.animesource.model.AnimeUpdateStrategy
 import eu.kanade.tachiyomi.animesource.model.AnimesPage
+import eu.kanade.tachiyomi.animesource.model.Hoster
 import eu.kanade.tachiyomi.animesource.model.SAnime
 import eu.kanade.tachiyomi.animesource.model.SEpisode
 import eu.kanade.tachiyomi.animesource.model.Video
+import eu.kanade.tachiyomi.animesource.online.AnimeHttpSource
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.util.asJsoup
-import keiyoushi.utils.AnimeHttpLegacySource
-import keiyoushi.utils.catchingFlatMapBlocking
 import keiyoushi.utils.getPreferencesLazy
-import keiyoushi.utils.parallelCatchingFlatMapBlocking
 import keiyoushi.utils.parseAs
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
@@ -39,7 +39,7 @@ import okhttp3.Request
 import okhttp3.Response
 
 class Hentaila :
-    AnimeHttpLegacySource(),
+    AnimeHttpSource(),
     ConfigurableAnimeSource {
 
     override val name = "Hentaila"
@@ -78,6 +78,9 @@ class Hentaila :
             "VIP",
         )
         private val PREF_SERVER_DEFAULT = SERVER_LIST.first()
+
+        private val QUALITY_REGEX = Regex("""(\d{3,4})p""")
+        private val RESOLUTION_REGEX = Regex("""\d{3,4}p|\d{3,4}x\d{3,4}""")
     }
 
     override fun popularAnimeRequest(page: Int) = GET(
@@ -226,17 +229,25 @@ class Hentaila :
     private val yourUploadExtractor by lazy { YourUploadExtractor(client) }
     private val burstCloudExtractor by lazy { BurstCloudExtractor(client) }
     private val sendvidExtractor by lazy { SendvidExtractor(client, headers) }
-    private val mediaFireExtractor by lazy { MediaFireExtractor(client) }
-    private val fireLoadExtractor by lazy { FireLoadExtractor(client) }
+    private val mediaFireExtractor by lazy { MediaFireExtractor(client, headers) }
+    private val fireLoadExtractor by lazy { FireLoadExtractor(client, headers) }
     private val vidhideExtractor by lazy { VidHideExtractor(client, headers) }
     private val universalExtractor by lazy { UniversalExtractor(client) }
+    private val playlistUtils by lazy { PlaylistUtils(client, headers) }
 
-    override fun videoListRequest(episode: SEpisode): Request {
-        val url = "$baseUrl${episode.url}/__data.json"
-        return GET(url, headers)
+    /** Cabeceras que se adjuntan a todo video que no traiga las suyas (necesarias para reproducir y descargar). */
+    private val videoHeaders by lazy {
+        headers.newBuilder()
+            .set("Referer", "$baseUrl/")
+            .set("Origin", baseUrl)
+            .build()
     }
 
-    override fun videoListParse(response: Response): List<Video> {
+    override fun seasonListParse(response: Response): List<SAnime> = throw UnsupportedOperationException()
+
+    override fun hosterListRequest(episode: SEpisode): Request = GET("$baseUrl${episode.url}/__data.json", headers)
+
+    override fun hosterListParse(response: Response): List<Hoster> {
         val document = response.parseAs<HentailaJsonDto>()
         val serverList = mutableListOf<VideoData>()
 
@@ -269,54 +280,86 @@ class Hentaila :
             }
         }
 
-        return serverList
-            .partition { it.name.lowercase() == "vip" }
-            .let { (vips, others) ->
-                val vipVideos = vips.catchingFlatMapBlocking { vip ->
-                    universalExtractor.videosFromUrl(
-                        vip.url.replace("/play/", "/m3u8/"),
-                        origRequestHeader = headers,
-                        prefix = "VIP",
-                    )
-                }
-                val otherVideos = others.parallelCatchingFlatMapBlocking { each ->
-                    when (each.name.lowercase()) {
-                        "streamwish" -> streamWishExtractor.videosFromUrl(each.url, videoNameGen = { "StreamWish:$it" })
+        return serverList.map { Hoster(hosterUrl = it.url, hosterName = it.name, internalData = it.name.lowercase()) }
+    }
 
-                        "mp4upload" -> mp4uploadExtractor.videosFromUrl(each.url, headers = headers, prefix = "Mp4Upload")
+    override suspend fun getVideoList(hoster: Hoster): List<Video> {
+        val url = hoster.hosterUrl
+        val videos = try {
+            when (hoster.internalData) {
+                "vip" -> vipVideos(url)
 
-                        "voe" -> voeExtractor.videosFromUrl(each.url)
+                "streamwish" -> streamWishExtractor.videosFromUrl(url, videoNameGen = { "StreamWish:$it" })
 
-                        "arc" -> listOf(Video(each.url.substringAfter("#"), "Arc", each.url.substringAfter("#")))
+                "mp4upload" -> mp4uploadExtractor.videosFromUrl(url, headers = headers, prefix = "Mp4Upload")
 
-                        "yupi", "yourupload" -> yourUploadExtractor.videoFromUrl(each.url, headers = headers)
+                "voe" -> voeExtractor.videosFromUrl(url)
 
-                        "burst" -> burstCloudExtractor.videoFromUrl(each.url, headers = headers)
+                "arc" -> listOf(Video(videoUrl = url.substringAfter("#"), videoTitle = "Arc", headers = videoHeaders))
 
-                        "sendvid" -> sendvidExtractor.videosFromUrl(each.url)
+                "yupi", "yourupload" -> yourUploadExtractor.videoFromUrl(url, headers = headers)
 
-                        "mediafire" -> mediaFireExtractor.getVideoFromUrl(each.url)
+                "burst" -> burstCloudExtractor.videoFromUrl(url, headers = headers)
 
-                        "fireload" -> fireLoadExtractor.getVideoFromUrl(each.url)
+                "sendvid" -> sendvidExtractor.videosFromUrl(url)
 
-                        "vidhide" -> vidhideExtractor.videosFromUrl(each.url)
+                "mediafire" -> mediaFireExtractor.getVideoFromUrl(url)
 
-                        else -> emptyList()
-                    }
-                }
-                vipVideos + otherVideos
+                "fireload" -> fireLoadExtractor.getVideoFromUrl(url)
+
+                "vidhide" -> vidhideExtractor.videosFromUrl(url)
+
+                else -> emptyList()
             }
+        } catch (_: Exception) {
+            emptyList()
+        }
+
+        return videos
+            .dropAudioOnly()
+            .map { video -> if (video.headers == null) video.copy(headers = videoHeaders) else video }
+    }
+
+    /**
+     * El servidor VIP entrega directamente un playlist HLS. Antes se cargaba en un WebView y se tomaba la
+     * primera petición .m3u8/.mp4, que podía ser una pista de solo audio (de ahí el "solo se escucha el audio").
+     */
+    private fun vipVideos(url: String): List<Video> {
+        val playlistUrl = url.replace("/play/", "/m3u8/")
+        if (playlistUrl != url || ".m3u8" in playlistUrl) {
+            val direct = try {
+                playlistUtils.extractFromHls(
+                    playlistUrl = playlistUrl,
+                    referer = "$baseUrl/",
+                    videoNameGen = { "VIP - $it" },
+                )
+            } catch (_: Exception) {
+                emptyList()
+            }
+            if (direct.isNotEmpty()) return direct
+        }
+        return universalExtractor.videosFromUrl(playlistUrl, origRequestHeader = headers, prefix = "VIP")
+    }
+
+    /** Descarta las variantes HLS sin resolución (pistas de solo audio) cuando existen variantes de video reales. */
+    private fun List<Video>.dropAudioOnly(): List<Video> {
+        val hasVideoVariants = any { RESOLUTION_REGEX.containsMatchIn(it.videoTitle) }
+        if (!hasVideoVariants) return this
+        return filter { RESOLUTION_REGEX.containsMatchIn(it.videoTitle) || ".m3u8" !in it.videoUrl }
+    }
+
+    override fun List<Hoster>.sortHosters(): List<Hoster> {
+        val server = preferences.getString(PREF_SERVER_KEY, PREF_SERVER_DEFAULT).orEmpty()
+        return sortedByDescending { it.hosterName.equals(server, ignoreCase = true) }
     }
 
     override fun List<Video>.sortVideos(): List<Video> {
         val quality = preferences.getString(PREF_QUALITY_KEY, PREF_QUALITY_DEFAULT).orEmpty()
-        val server = preferences.getString(PREF_SERVER_KEY, PREF_SERVER_DEFAULT).orEmpty()
 
         return sortedWith(
-            compareBy<Video> { it.videoTitle.contains(server, ignoreCase = true) }
-                .thenBy { it.videoTitle.contains(quality) }
-                .thenBy { Regex("""(\d+)p""").find(it.videoTitle)?.groupValues?.get(1)?.toIntOrNull() ?: 0 },
-        ).reversed()
+            compareByDescending<Video> { it.videoTitle.contains(quality) }
+                .thenByDescending { QUALITY_REGEX.find(it.videoTitle)?.groupValues?.get(1)?.toIntOrNull() ?: 0 },
+        )
     }
 
     override fun getFilterList(): AnimeFilterList = AnimeFilterList(
