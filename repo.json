@@ -1,8 +1,19 @@
-{
-  "meta": {
-    "name": "Jose-ruis",
-    "shortName": "Jose-ruis",
-    "website": "https://github.com/Jose-ruis/anime-extensions2.0",
-    "signingKeyFingerprint": "0000000000000000000000000000000000000000000000000000000000000000"
+[
+  {
+    "name": "Aniyomi: HentaiLa.tv",
+    "pkg": "eu.kanade.tachiyomi.animeextension.es.hentailatv",
+    "apk": "aniyomi-es.hentailatv-v16.1.apk",
+    "lang": "es",
+    "code": 1,
+    "version": "16.1",
+    "nsfw": 1,
+    "sources": [
+      {
+        "name": "HentaiLa.tv",
+        "lang": "es",
+        "id": "224048791756889901",
+        "baseUrl": "https://hentaila.tv"
+      }
+    ]
   }
-}
+]
