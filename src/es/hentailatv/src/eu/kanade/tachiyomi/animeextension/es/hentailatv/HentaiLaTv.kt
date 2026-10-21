@@ -49,7 +49,7 @@ class HentaiLaTv :
 
     // ============================== Popular ===============================
 
-    override fun popularAnimeRequest(page: Int): Request = GET("$baseUrl/directorio?page=$page", headers)
+    override fun popularAnimeRequest(page: Int): Request = GET("$baseUrl/?page=$page", headers)
 
     private val listItemSelector = "div.elemento, article.anime-card, div.col-6 div.item"
 
@@ -73,7 +73,7 @@ class HentaiLaTv :
 
     // =============================== Latest ===============================
 
-    override fun latestUpdatesRequest(page: Int): Request = GET("$baseUrl/animes?page=$page", headers)
+    override fun latestUpdatesRequest(page: Int): Request = GET("$baseUrl/?page=$page", headers)
 
     override fun latestUpdatesParse(response: Response): AnimesPage = parseAnimeListing(response.asJsoup())
 
