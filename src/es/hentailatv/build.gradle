@@ -1,7 +1,7 @@
 ext {
     extName = 'HentaiLa.tv'
     extClass = '.HentaiLaTv'
-    extVersionCode = 1
+    extVersionCode = 2
     libVersion = 16
     // isNsfw = true
 }
@@ -14,3 +14,4 @@ dependencies {
     // implementation(project(':lib:streamtapeextractor'))
     implementation(project(':lib:playlistutils'))
 }
+

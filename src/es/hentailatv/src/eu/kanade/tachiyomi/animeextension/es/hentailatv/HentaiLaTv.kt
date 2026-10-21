@@ -22,13 +22,9 @@ import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.Request
 import okhttp3.Response
 import org.jsoup.nodes.Document
-import java.text.SimpleDateFormat
 import java.util.Locale
 
-class HentaiLaTv :
-    AnimeHttpSource(),
-    ConfigurableAnimeSource {
-
+class HentaiLaTv : AnimeHttpSource(), ConfigurableAnimeSource {
     override val name = "HentaiLa.tv"
     override val baseUrl = "https://hentaila.tv"
     override val lang = "es"
@@ -45,46 +41,47 @@ class HentaiLaTv :
         .add("Referer", "$baseUrl/")
 
     private val playlistUtils by lazy { PlaylistUtils(client, headers) }
-    private val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.ROOT)
 
-    // ============================== Popular ===============================
+    // The site is WordPress-based: its real archive pagination is /page/N/.
+    private fun catalogueRequest(page: Int): Request =
+        if (page <= 1) GET("$baseUrl/", headers) else GET("$baseUrl/page/$page/", headers)
 
-    override fun popularAnimeRequest(page: Int): Request = GET("$baseUrl/?page=$page", headers)
-
-    private val listItemSelector = "div.elemento, article.anime-card, div.col-6 div.item"
+    override fun popularAnimeRequest(page: Int): Request = catalogueRequest(page)
 
     override fun popularAnimeParse(response: Response): AnimesPage = parseAnimeListing(response.asJsoup())
 
-    private fun parseAnimeListing(document: Document): AnimesPage {
-        val animes = document.select("div.row div.item, div.anime-card, article").mapNotNull { element ->
-            element.selectFirst("a")?.let { link ->
-                SAnime.create().apply {
-                    setUrlWithoutDomain(link.absUrl("href"))
-                    title = element.selectFirst(".title, h3, h2, .name")?.text() ?: link.attr("title")
-                    thumbnail_url = element.selectFirst("img")?.let { img ->
-                        img.absUrl("data-src").ifEmpty { img.absUrl("src") }
-                    }
-                }
-            }
-        }
-        val hasNextPage = document.selectFirst("ul.pagination-list li.active + li, a.next, .pagination .fa-angle-right") != null
-        return AnimesPage(animes, hasNextPage)
-    }
-
-    // =============================== Latest ===============================
-
-    override fun latestUpdatesRequest(page: Int): Request = GET("$baseUrl/?page=$page", headers)
+    override fun latestUpdatesRequest(page: Int): Request = catalogueRequest(page)
 
     override fun latestUpdatesParse(response: Response): AnimesPage = parseAnimeListing(response.asJsoup())
 
-    // =============================== Search ===============================
+    private fun parseAnimeListing(document: Document): AnimesPage {
+        val anime = document.select(".item_card").mapNotNull { item ->
+            val link = item.selectFirst("a[href]") ?: return@mapNotNull null
+            val title = item.selectFirst(".card__title")?.text()?.trim()
+                ?.takeIf(String::isNotEmpty)
+                ?: link.attr("title").takeIf(String::isNotEmpty)
+                ?: return@mapNotNull null
+
+            SAnime.create().apply {
+                setUrlWithoutDomain(link.absUrl("href"))
+                this.title = title
+                thumbnail_url = item.selectFirst(".card__cover img, img")?.let { image ->
+                    val attribute = if (image.hasAttr("data-src")) "data-src" else "src"
+                    image.absUrl(attribute).takeIf(String::isNotEmpty)
+                }
+            }
+        }.distinctBy { it.url }
+
+        val hasNextPage = document.selectFirst(".wp-pagenavi a.nextpostslink") != null
+        return AnimesPage(anime, hasNextPage)
+    }
 
     override fun getFilterList(): AnimeFilterList = AnimeFilterList()
 
+    // WordPress search uses ?s=; /buscar?q= returns 404 on the live site.
     override fun searchAnimeRequest(page: Int, query: String, filters: AnimeFilterList): Request {
         val url = baseUrl.toHttpUrl().newBuilder()
-            .addPathSegment("buscar")
-            .addQueryParameter("q", query)
+            .addQueryParameter("s", query.trim())
             .addQueryParameter("page", page.toString())
             .build()
         return GET(url, headers)
@@ -92,142 +89,119 @@ class HentaiLaTv :
 
     override fun searchAnimeParse(response: Response): AnimesPage = parseAnimeListing(response.asJsoup())
 
-    // =========================== Anime Details ============================
-
     override fun getAnimeUrl(anime: SAnime): String = baseUrl + anime.url
 
     override fun animeDetailsParse(response: Response): SAnime {
         val document = response.asJsoup()
         return SAnime.create().apply {
-            title = document.selectFirst("div.s-title h1, h1.title")?.text() ?: ""
-            thumbnail_url = document.selectFirst("div.thumb img, .anime-poster img")?.absUrl("src")
-            description = document.selectFirst("div.sinopsis, div.description")?.text()
-            genre = document.select("div.genres a, .tags a").joinToString { it.text() }
-            status = parseStatus(document.selectFirst("span.status, .estado")?.text())
+            url = response.request.url.encodedPath
+            title = document.selectFirst(".hentai__header h1, h1")?.text()?.trim().orEmpty()
+            thumbnail_url = document.selectFirst(".hentai_cover img, .hentai__cover img")?.let { image ->
+                val attribute = if (image.hasAttr("data-src")) "data-src" else "src"
+                image.absUrl(attribute).takeIf(String::isNotEmpty)
+            }
+            description = document.selectFirst(".vraven_text.single")?.text()?.trim()
+            genre = document.select(".single_data a[rel=tag]").joinToString { it.text() }
+            initialized = true
         }
     }
-
-    private fun parseStatus(status: String?): Int {
-        val value = status?.lowercase().orEmpty()
-        return when {
-            "emisi" in value || "ongoing" in value -> SAnime.ONGOING
-            "finaliz" in value || "complet" in value -> SAnime.COMPLETED
-            else -> SAnime.UNKNOWN
-        }
-    }
-
-    // ============================== Episodes ==============================
 
     override fun seasonListParse(response: Response): List<SAnime> = throw UnsupportedOperationException()
 
     override fun episodeListParse(response: Response): List<SEpisode> {
         val document = response.asJsoup()
-        // HentaiLa suele listar los episodios en bloques o listados numerados
-        val episodeElements = document.select("ul.episodes-list li, div.episios a, .list-eps li a, ul#chapters li a")
+        val episodeLinks = document.select(".hentai__episodes li.hentai__chapter a[href]")
+        if (episodeLinks.isEmpty()) return emptyList()
 
-        if (episodeElements.isEmpty()) {
-            // Si la página del anime es directamente el episodio o usa otro selector
-            val currentEp = SEpisode.create().apply {
-                url = document.location().removePrefix(baseUrl)
-                episode_number = 1F
-                name = document.selectFirst("h1.title")?.text() ?: "Episodio 1"
-            }
-            return listOf(currentEp)
-        }
-
-        return episodeElements.map { element ->
-            val link = if (element.tagName() == "a") element else element.selectFirst("a")!!
+        return episodeLinks.map { link ->
+            val label = link.text().trim()
+            val number = EPISODE_NUMBER_REGEX.find(label)?.value?.toFloatOrNull() ?: 0F
             SEpisode.create().apply {
                 setUrlWithoutDomain(link.absUrl("href"))
-                val epText = element.text()
-                val number = EPISODE_NUMBER_REGEX.find(epText)?.value?.toFloatOrNull() ?: 1F
                 episode_number = number
-                name = "Episodio ${number.toString().removeSuffix(".0")}"
+                name = label.ifEmpty { "Episodio ${number.toInt()}" }
             }
         }.sortedByDescending { it.episode_number }
     }
 
     override fun getEpisodeUrl(episode: SEpisode): String = baseUrl + episode.url
 
-    // ============================ Video Links =============================
-
-    override fun hosterListRequest(episode: SEpisode): Request = GET(baseUrl + episode.url, headers)
+    override fun hosterListRequest(episode: SEpisode): Request = GET(getEpisodeUrl(episode), headers)
 
     override fun hosterListParse(response: Response): List<Hoster> {
         val document = response.asJsoup()
-
-        // Extrae reproductores o iframes incrustados típicos de la web
-        val streamHosters = document.select("div.player-options script, div.video-player iframe, div.embed-responsive iframe, ul.nav-tabs li a").mapNotNull { server ->
-            val embedUrl = server.attr("data-src").ifEmpty { server.attr("src").ifEmpty { server.attr("data-url") } }
-            if (embedUrl.isEmpty()) return@mapNotNull null
+        val streams = document.select("iframe[src], iframe[data-src]").mapNotNull { iframe ->
+            val attribute = if (iframe.hasAttr("src")) "src" else "data-src"
+            val embedUrl = iframe.absUrl(attribute)
+            if (embedUrl.isBlank() || !embedUrl.startsWith("http")) return@mapNotNull null
             Hoster(
                 hosterUrl = embedUrl,
-                hosterName = server.text().ifEmpty { embedUrl.toHttpUrl().host },
+                hosterName = embedUrl.toHttpUrl().host,
                 internalData = TYPE_STREAM,
             )
         }
 
-        // Búsqueda alternativa de reproductores si están embebidos directamente en la vista
-        val fallbackHosters = document.select("iframe").mapNotNull { iframe ->
-            val src = iframe.absUrl("src")
-            if (src.isEmpty()) return@mapNotNull null
-            Hoster(
-                hosterUrl = src,
-                hosterName = src.toHttpUrl().host,
-                internalData = TYPE_STREAM,
-            )
+        // Only label true media URLs as downloads; a download landing page is not a video file.
+        val downloads = document.select("a[href]").mapNotNull { link ->
+            val url = link.absUrl("href")
+            val path = url.substringBefore('?').lowercase(Locale.ROOT)
+            if (!path.endsWith(".mp4") && !path.endsWith(".m3u8")) return@mapNotNull null
+            Hoster(hosterUrl = url, hosterName = "Descarga ${link.text()}".trim(), internalData = TYPE_DOWNLOAD)
         }
 
-        val downloads = document.select("div.downloads-list a, a.btn-download").map { link ->
-            Hoster(
-                hosterUrl = link.absUrl("href"),
-                hosterName = "Descarga ${link.text()}".trim(),
-                internalData = TYPE_DOWNLOAD,
-            )
-        }
-
-        return (streamHosters + fallbackHosters).distinctBy { it.hosterUrl } + downloads
+        return (streams + downloads).distinctBy { it.hosterUrl }
     }
 
-    override suspend fun getVideoList(hoster: Hoster): List<Video> {
-        val url = hoster.hosterUrl
-        return when (hoster.internalData) {
-            TYPE_DOWNLOAD -> listOf(
-                Video(
-                    videoUrl = url,
-                    videoTitle = hoster.hosterName,
-                    headers = headers,
-                ),
-            )
-            else -> when {
-                url.contains(".m3u8") -> playlistUtils.extractFromHls(
-                    playlistUrl = url,
-                    referer = "$baseUrl/",
-                    videoNameGen = { quality -> "${hoster.hosterName} - $quality" },
-                )
-                url.contains(".mp4") -> listOf(
-                    Video(
-                        videoUrl = url,
-                        videoTitle = "${hoster.hosterName} - mp4",
-                        headers = headers,
-                    ),
-                )
-                else -> videosFromEmbed(url, hoster.hosterName)
-            }
+    override suspend fun getVideoList(hoster: Hoster): List<Video> =
+        when (hoster.internalData) {
+            TYPE_DOWNLOAD -> videosFromMediaUrl(hoster.hosterUrl, hoster.hosterName)
+            else -> videosFromEmbed(hoster.hosterUrl, hoster.hosterName)
         }
-    }
 
-    private suspend fun videosFromEmbed(embedUrl: String, label: String): List<Video> = try {
+    private suspend fun videosFromEmbed(embedUrl: String, label: String): List<Video> {
         val document = client.get(embedUrl, headers).asJsoup()
-        document.select("video source[src], source[src]").map { source ->
-            Video(
-                videoUrl = source.absUrl("src"),
-                videoTitle = "$label - ${source.attr("label").ifEmpty { source.attr("res").ifEmpty { "Video" } }}",
-                headers = headers,
+        val mediaUrls = buildList {
+            // Restrict to sources inside <video>; a loose source[src] selector also picked audio.
+            document.select("video[src], video source[src], video source[data-src]").forEach { source ->
+                val attribute = when {
+                    source.hasAttr("src") -> "src"
+                    source.hasAttr("data-src") -> "data-src"
+                    else -> return@forEach
+                }
+                source.absUrl(attribute).takeIf(String::isNotEmpty)?.let(::add)
+            }
+            document.select("meta[property=og:video], meta[property=og:video:url]")
+                .mapNotNull { it.attr("content").takeIf(String::isNotEmpty) }
+                .forEach(::add)
+            val mediaRegex = Regex(
+                """https?://[^\s"'<>]+?\.(?:m3u8|mp4)(?:\?[^\s"'<>]*)?""",
+                RegexOption.IGNORE_CASE,
             )
+            document.select("script").forEach { script ->
+                mediaRegex.findAll(script.data().replace("\\/", "/")).forEach { match ->
+                    add(match.value)
+                }
+            }
+        }.distinct()
+
+        val videos = mediaUrls.flatMap { videosFromMediaUrl(it, label) }
+        if (videos.isEmpty()) throw IllegalStateException("No se encontró una pista de video reproducible")
+        return videos
+    }
+
+    private suspend fun videosFromMediaUrl(url: String, label: String): List<Video> {
+        val path = url.substringBefore('?').lowercase(Locale.ROOT)
+        return when {
+            path.endsWith(".m3u8") -> playlistUtils.extractFromHls(
+                playlistUrl = url,
+                referer = "$baseUrl/",
+                videoNameGen = { quality -> "$label - $quality" },
+            )
+            path.endsWith(".mp4") -> listOf(
+                Video(videoUrl = url, videoTitle = "$label - MP4", headers = headers),
+            )
+            else -> emptyList()
         }
-    } catch (_: Exception) {
-        emptyList()
     }
 
     private val preferredQuality: String
@@ -235,9 +209,7 @@ class HentaiLaTv :
 
     override fun List<Video>.sortVideos(): List<Video> = sortedWith(
         compareByDescending<Video> { it.videoTitle.contains(preferredQuality) }
-            .thenByDescending { video ->
-                QUALITY_REGEX.find(video.videoTitle)?.groupValues?.get(1)?.toIntOrNull() ?: 0
-            },
+            .thenByDescending { video -> QUALITY_REGEX.find(video.videoTitle)?.groupValues?.get(1)?.toIntOrNull() ?: 0 },
     )
 
     override fun setupPreferenceScreen(screen: PreferenceScreen) {
@@ -263,3 +235,5 @@ class HentaiLaTv :
         private val EPISODE_NUMBER_REGEX = Regex("""\d+(\.\d+)?""")
     }
 }
+
+
