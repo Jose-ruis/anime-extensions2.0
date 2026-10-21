@@ -2,10 +2,10 @@
   {
     "name": "Aniyomi: Hentaila",
     "pkg": "eu.kanade.tachiyomi.animeextension.es.hentaila",
-    "apk": "aniyomi-es.hentaila-v14.49.apk",
+    "apk": "aniyomi-es.hentaila-v16.50.apk",
     "lang": "es",
-    "code": 49,
-    "version": "14.49",
+    "code": 50,
+    "version": "16.50",
     "nsfw": 1,
     "sources": [
       {
