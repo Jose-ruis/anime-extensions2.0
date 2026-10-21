@@ -33,6 +33,7 @@ class HentaiLaTv :
     override val baseUrl = "https://hentaila.tv"
     override val lang = "es"
     override val supportsLatest = true
+    override val versionId = 2
 
     private val preferences: SharedPreferences by getPreferencesLazy()
 
